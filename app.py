@@ -13,6 +13,27 @@ from game_logic import (
 
 st.set_page_config(page_title="Hangman", layout="centered")
 
+# ---------- MOBILE / DESKTOP TOGGLE ----------
+screen_mode = st.sidebar.radio("View Mode", ["Auto", "Mobile", "Desktop"])
+
+if screen_mode == "Mobile":
+    is_mobile = True
+elif screen_mode == "Desktop":
+    is_mobile = False
+else:
+    is_mobile = False  # fallback
+
+# ---------- BUTTON STYLE ----------
+st.markdown("""
+<style>
+button {
+    height: 3rem !important;
+    font-size: 18px !important;
+    border-radius: 10px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ---------- IMAGE SETUP ----------
 BASE = os.path.dirname(__file__)
 MAX_IMAGES = 10
@@ -35,25 +56,20 @@ st.sidebar.title("⚙️ Settings")
 difficulty = st.sidebar.selectbox("Difficulty", ["Easy", "Medium", "Hard"])
 mode = st.sidebar.selectbox("Mode", ["Single Player", "Multiplayer"])
 
-# Reset game if mode changes
+# ---------- RESET ON MODE CHANGE ----------
 if "last_mode" not in st.session_state:
     st.session_state.last_mode = mode
 
 if st.session_state.last_mode != mode:
-    if "game" in st.session_state:
-        del st.session_state.game
-    if "players" in st.session_state:
-        del st.session_state.players
-    if "setter" in st.session_state:
-        del st.session_state.setter
-    if "word_mode" in st.session_state:
-        del st.session_state.word_mode
+    for key in ["game", "players", "setter", "word_mode"]:
+        if key in st.session_state:
+            del st.session_state[key]
 
     st.session_state.last_mode = mode
     st.rerun()
 
 # =========================================================
-# 🧍 SINGLE PLAYER MODE
+# 🧍 SINGLE PLAYER
 # =========================================================
 if mode == "Single Player":
 
@@ -62,7 +78,7 @@ if mode == "Single Player":
 
     game = st.session_state.game
 
-    st.title("🎯 Hangman (Single Player)")
+    st.title("🎯 Hangman")
     st.markdown("### 🎯 Your Turn")
 
     display = [c if c in game["guesses"] else "_" for c in game["word"]]
@@ -71,19 +87,36 @@ if mode == "Single Player":
     stage = min(int(progress * MAX_IMAGES), MAX_IMAGES)
     remaining = game["max_turns"] - game["wrong"]
 
-    left, right = st.columns([3, 1])
+    # ---------- RESPONSIVE LAYOUT ----------
+    if is_mobile:
+        show_image(stage, game["status"])
 
-    with left:
-        st.markdown("## " + " ".join(display))
+        st.markdown(
+            f"<div style='text-align:center; font-size:28px; letter-spacing:6px;'>"
+            f"{' '.join(display)}</div>",
+            unsafe_allow_html=True
+        )
+
         st.progress(progress)
         st.write("❤️" * remaining + "🖤" * game["wrong"])
 
-    with right:
-        show_image(stage, game["status"])
+    else:
+        left, right = st.columns([3, 1])
 
-    cols = st.columns(9)
+        with left:
+            st.markdown("## " + " ".join(display))
+            st.progress(progress)
+            st.write("❤️" * remaining + "🖤" * game["wrong"])
+
+        with right:
+            show_image(stage, game["status"])
+
+    # ---------- LETTERS ----------
+    cols_per_row = 6 if is_mobile else 9
+    cols = st.columns(cols_per_row)
+
     for i, l in enumerate(string.ascii_uppercase):
-        with cols[i % 9]:
+        with cols[i % cols_per_row]:
             if st.button(
                 l,
                 key=f"single_{l}",
@@ -99,7 +132,6 @@ if mode == "Single Player":
     if game["status"] == "win":
         st.success("🎉 You won!")
         st.balloons()
-
     elif game["status"] == "lose":
         st.error(f"💀 Game Over! Word: {game['word']}")
 
@@ -109,20 +141,18 @@ if mode == "Single Player":
             st.rerun()
 
 # =========================================================
-# 👥 MULTIPLAYER MODE
+# 👥 MULTIPLAYER
 # =========================================================
 else:
 
-    # ---------- PLAYER SETUP ----------
     if "players" not in st.session_state:
-
         st.title("👥 Multiplayer Setup")
 
         num_players = st.number_input("Number of players", 2, 6, 2)
 
         players = []
         for i in range(num_players):
-            name = st.text_input(f"Player {i+1} Name", key=f"p{i}")
+            name = st.text_input(f"Player {i+1}", key=f"p{i}")
             if name:
                 players.append(name)
 
@@ -132,47 +162,35 @@ else:
 
         st.stop()
 
-    # ---------- CHOOSE MODE ----------
     if "word_mode" not in st.session_state:
+        st.title("🎮 Game Type")
 
-        st.title("🎮 Choose Game Type")
-
-        word_mode = st.radio(
-            "Select word source:",
+        mode_choice = st.radio(
+            "Word source:",
             ["Player enters word", "Random word"]
         )
 
         if st.button("Continue"):
-            st.session_state.word_mode = word_mode
+            st.session_state.word_mode = mode_choice
             st.rerun()
 
         st.stop()
 
-    # ---------- WORD SETUP ----------
     if "game" not in st.session_state:
 
-        # 🎲 RANDOM WORD MODE
         if st.session_state.word_mode == "Random word":
-
-            words = load_words()
-            word = random.choice(words)
+            word = random.choice(load_words())
 
             st.session_state.game = new_multiplayer_game(
-                word,
-                difficulty,
-                st.session_state.players,
-                setter="System"
+                word, difficulty, st.session_state.players, "System"
             )
             st.rerun()
 
-        # 👤 PLAYER ENTERS WORD
         else:
-
             if "setter" not in st.session_state:
+                st.title("🎭 Choose Setter")
 
-                st.title("🎭 Choose Word Setter")
-
-                setter = st.selectbox("Who will set the word?", st.session_state.players)
+                setter = st.selectbox("Who sets the word?", st.session_state.players)
 
                 if st.button("Continue"):
                     st.session_state.setter = setter
@@ -180,12 +198,12 @@ else:
 
                 st.stop()
 
-            st.title("🔒 Enter Secret Word")
+            st.title("🔒 Enter Word")
             st.write(f"{st.session_state.setter}, enter the word")
 
             word = st.text_input("Word", type="password")
 
-            if st.button("Start Game") and word:
+            if st.button("Start") and word:
                 st.session_state.game = new_multiplayer_game(
                     word.upper(),
                     difficulty,
@@ -196,19 +214,15 @@ else:
 
             st.stop()
 
-    # ---------- GAME ----------
     game = st.session_state.game
     players = game.get("players", [])
 
-    # Handle "System" setter
     if game["setter"] == "System":
-        current_player = game["players"][game["turn"] % len(game["players"])]
-        st.caption("🎲 Random word mode")
+        current_player = players[game["turn"] % len(players)]
     else:
         current_player = game["guessers"][game["turn"]]
-        st.caption(f"Word set by {game['setter']} (not playing)")
 
-    st.title("🎯 Hangman (Multiplayer)")
+    st.title("🎯 Hangman")
     st.markdown(f"### 🎯 Turn: **{current_player}**")
 
     display = [c if c in game["guesses"] else "_" for c in game["word"]]
@@ -217,19 +231,27 @@ else:
     stage = min(int(progress * MAX_IMAGES), MAX_IMAGES)
     remaining = game["max_turns"] - game["wrong"]
 
-    left, right = st.columns([3, 1])
-
-    with left:
+    if is_mobile:
+        show_image(stage, game["status"])
         st.markdown("## " + " ".join(display))
         st.progress(progress)
         st.write("❤️" * remaining + "🖤" * game["wrong"])
+    else:
+        left, right = st.columns([3, 1])
 
-    with right:
-        show_image(stage, game["status"])
+        with left:
+            st.markdown("## " + " ".join(display))
+            st.progress(progress)
+            st.write("❤️" * remaining + "🖤" * game["wrong"])
 
-    cols = st.columns(9)
+        with right:
+            show_image(stage, game["status"])
+
+    cols_per_row = 6 if is_mobile else 9
+    cols = st.columns(cols_per_row)
+
     for i, l in enumerate(string.ascii_uppercase):
-        with cols[i % 9]:
+        with cols[i % cols_per_row]:
             if st.button(
                 l,
                 key=f"multi_{l}",
@@ -241,21 +263,17 @@ else:
 
     st.markdown("### 🏆 Scores")
     for p in players:
-        role = " (Setter)" if p == game["setter"] else ""
-        st.write(f"{p}{role}: {game['scores'][p]}")
+        st.write(f"{p}: {game['scores'][p]}")
 
     if game["status"] == "win":
-        st.success(f"🎉 {game['winner']} guessed the word!")
+        st.success(f"🎉 {game['winner']} wins!")
         st.balloons()
-
     elif game["status"] == "lose":
-        st.error(f"💀 No one guessed it. Word: {game['word']}")
+        st.error(f"💀 Word: {game['word']}")
 
     if game["status"] != "playing":
         if st.button("🔄 Next Round"):
-            del st.session_state.game
-            if "setter" in st.session_state:
-                del st.session_state.setter
-            if "word_mode" in st.session_state:
-                del st.session_state.word_mode
+            for key in ["game", "setter", "word_mode"]:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.rerun()
